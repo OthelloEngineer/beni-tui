@@ -5,3 +5,8 @@ benifex:
   base_url: https://www.benify.com
   discount_path: /fps/user/discount/fetchStructure
   discount_item: /fps/user/discount/fetch?discountId=
+  discount_code_path: /fps/user/discountCode/view?discountId=
+  paragraph_node_class: paragraph-node
+  external_link_reference_attr: data-external-link-reference
+  unique_discount_code_url_attr: data-unique-discount-code-url
+  trial_regex: "(\\d+\\s*(?:måneder|dage))\\s*gratis"
