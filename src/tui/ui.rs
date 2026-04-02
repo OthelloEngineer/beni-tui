@@ -58,13 +58,12 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             };
 
             let current_discount_indices = app.get_current_discounts();
-            let is_all_discounts = app.category_list_state.selected().unwrap_or(0) == 0;
-            
+
             f.render_stateful_widget(
                 DiscountListWidget {
                     app_discounts: &app.discounts,
                     discount_indices: &current_discount_indices,
-                    is_all_discounts,
+                    category_filter: &app.category_filter,
                     search_state: &app.search_state,
                 },
                 display_chunks[0],

@@ -7,12 +7,12 @@ use ratatui::{
 };
 use crate::beni_cli::DealType;
 use crate::benifex::discount_response::Discount;
-use crate::tui::app::SearchState;
+use crate::tui::app::{CategoryFilter, SearchState};
 
 pub struct DiscountListWidget<'a> {
     pub app_discounts: &'a [(String, Discount, Option<DealType>)],
     pub discount_indices: &'a [usize],
-    pub is_all_discounts: bool,
+    pub category_filter: &'a CategoryFilter,
     pub search_state: &'a SearchState,
 }
 
@@ -44,10 +44,9 @@ impl<'a> StatefulWidget for DiscountListWidget<'a> {
             })
             .collect();
 
-        let mut list_title = if self.is_all_discounts {
-            " All Discounts ".to_string()
-        } else {
-            " Category Discounts ".to_string()
+        let mut list_title = match self.category_filter {
+            CategoryFilter::All => " All Discounts ".to_string(),
+            CategoryFilter::Specific(_) => " Category Discounts ".to_string(),
         };
 
         match self.search_state {
