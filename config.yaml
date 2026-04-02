@@ -1,0 +1,7 @@
+trialSynonyms:
+  - "prøve"
+  - "gratis"
+benifex:
+  base_url: https://www.benify.com
+  discount_path: /fps/user/discount/fetchStructure
+  discount_item: /fps/user/discount/fetch?discountId=

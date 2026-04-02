@@ -1,0 +1,18 @@
+[package]
+name = "beni-tui"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+regex = "1.12.3"
+serde = "1.0.228"
+serde_derive = "1.0.228"
+serde_json = "1.0.149"
+
+reqwest = { version = "0.13", features = ["json"] }
+tokio = { version = "1", features = ["full"] }
+ratatui = "0.30.0"
+crossterm = "0.28.1"
+open = "5.1.2"
+arboard = "3.4.1"
+futures = "0.3.31"
