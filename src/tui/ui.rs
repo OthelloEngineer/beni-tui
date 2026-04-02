@@ -1,12 +1,14 @@
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, Borders, Paragraph},
     Frame,
 };
 use crate::tui::app::{App, AppState};
-use crate::beni_cli::DealType;
+use crate::tui::components::{
+    category_list::CategoryListWidget, cookie_input::CookieInputWidget,
+    discount_details::DiscountDetailsWidget, discount_list::DiscountListWidget,
+};
 
 pub fn ui(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
@@ -25,29 +27,21 @@ pub fn ui(f: &mut Frame, app: &mut App) {
 
     match app.state {
         AppState::CookieInput => {
-            let input = Paragraph::new(app.cookies.as_str())
-                .style(Style::default().fg(Color::Yellow))
-                .block(Block::default()
-                    .borders(Borders::ALL)
-                    .title(" Paste Cookies and press Enter (Esc to Quit, Backspace to clear) ")
-                    .border_style(Style::default().fg(Color::LightBlue)));
-            f.render_widget(input, chunks[1]);
+            f.render_widget(
+                CookieInputWidget {
+                    cookies: app.cookies.as_str(),
+                },
+                chunks[1],
+            );
         }
         AppState::CategoryList => {
-            let items: Vec<ListItem> = app.categories
-                .iter()
-                .map(|cat| {
-                    ListItem::new(Span::styled(cat.clone(), Style::default().fg(Color::Yellow)))
-                })
-                .collect();
-            let list = List::new(items)
-                .block(Block::default()
-                    .borders(Borders::ALL)
-                    .title(" Categories ")
-                    .border_style(Style::default().fg(Color::LightBlue)))
-                .highlight_style(Style::default().bg(Color::Blue).fg(Color::LightYellow).add_modifier(Modifier::BOLD))
-                .highlight_symbol(">> ");
-            f.render_stateful_widget(list, chunks[1], &mut app.category_list_state);
+            f.render_stateful_widget(
+                CategoryListWidget {
+                    categories: &app.categories,
+                },
+                chunks[1],
+                &mut app.category_list_state,
+            );
         }
         AppState::DiscountList | AppState::DiscountDetails => {
             let is_details = matches!(app.state, AppState::DiscountDetails);
@@ -63,94 +57,35 @@ pub fn ui(f: &mut Frame, app: &mut App) {
                     .split(chunks[1])
             };
 
-            let current_discounts = app.get_current_discounts();
-            let items: Vec<ListItem> = current_discounts
-                .iter()
-                .map(|(cat, d, deal)| {
-                    let mut spans = vec![
-                        Span::styled(format!("[{}] ", cat), Style::default().fg(Color::LightBlue)),
-                        Span::styled(d.name.clone(), Style::default().fg(Color::Yellow)),
-                    ];
-
-                    if let Some(deal_type) = deal {
-                        let deal_text = match deal_type {
-                            DealType::Percentage(p) => format!(" - Deal: {}%", p),
-                            DealType::Trial(t) => format!(" - Deal: {} Trial", t),
-                        };
-                        spans.push(Span::styled(deal_text, Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD)));
-                    }
-
-                    ListItem::new(Line::from(spans))
-                })
-                .collect();
+            let current_discount_indices = app.get_current_discounts();
+            let is_all_discounts = app.category_list_state.selected().unwrap_or(0) == 0;
             
-            let list_title = if app.category_list_state.selected().unwrap_or(0) == 0 {
-                " All Discounts "
-            } else {
-                " Category Discounts "
-            };
-
-            let list = List::new(items)
-                .block(Block::default()
-                    .borders(Borders::ALL)
-                    .title(list_title)
-                    .border_style(Style::default().fg(Color::LightBlue)))
-                .highlight_style(Style::default().bg(Color::Blue).fg(Color::LightYellow).add_modifier(Modifier::BOLD))
-                .highlight_symbol(">> ");
-            f.render_stateful_widget(list, display_chunks[0], &mut app.discount_list_state);
+            f.render_stateful_widget(
+                DiscountListWidget {
+                    app_discounts: &app.discounts,
+                    discount_indices: &current_discount_indices,
+                    is_all_discounts,
+                    search_state: &app.search_state,
+                },
+                display_chunks[0],
+                &mut app.discount_list_state,
+            );
 
             if is_details {
                 if let Some(details) = &app.selected_discount_details {
-                    let mut text = vec![
-                        Line::from(vec![Span::styled("Name: ", Style::default().fg(Color::LightBlue)), Span::styled(&details.function_data.result.name, Style::default().fg(Color::Yellow))]),
-                        Line::from(vec![Span::styled("Category: ", Style::default().fg(Color::LightBlue)), Span::styled(&app.discounts[app.discount_list_state.selected().unwrap_or(0)].0, Style::default().fg(Color::Yellow))]),
-                        Line::from(vec![]),
-                        Line::from(vec![Span::styled("Highlight: ", Style::default().fg(Color::LightBlue)), Span::styled(&details.function_data.result.description_highlight, Style::default().fg(Color::LightGreen))]),
-                        Line::from(vec![]),
-                        Line::from(vec![Span::styled("Description:", Style::default().fg(Color::LightBlue))]),
-                        Line::from(vec![Span::styled(&details.function_data.result.description, Style::default().fg(Color::Yellow))]),
-                    ];
-
-                    let html = &details.function_data.result.description_long_html;
+                    let selected_idx_in_filtered = app.discount_list_state.selected().unwrap_or(0);
+                    let actual_discount_idx = current_discount_indices.get(selected_idx_in_filtered).copied().unwrap_or(0);
+                    let category_name = &app.discounts[actual_discount_idx].0;
                     
-                    let paragraphs = app.parser.extract_paragraphs(html);
-
-                    if !paragraphs.is_empty() {
-                        text.push(Line::from(vec![]));
-                        text.push(Line::from(vec![Span::styled("More Info:", Style::default().fg(Color::LightBlue))]));
-                        for p in paragraphs {
-                            for line in p.split('\n') {
-                                let trimmed = line.trim();
-                                if !trimmed.is_empty() {
-                                    text.push(Line::from(vec![Span::styled(trimmed.to_string(), Style::default().fg(Color::Yellow))]));
-                                }
-                            }
-                        }
-                    }
-
-                    if let Some(code) = &app.selected_discount_code {
-                        text.push(Line::from(vec![]));
-                        text.push(Line::from(vec![Span::styled("Discount Code: ", Style::default().fg(Color::LightBlue)), Span::styled(code.clone(), Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD))]));
-                    }
-
-                    if let Some(_url) = app.parser.extract_link(html) {
-                        text.push(Line::from(vec![]));
-                        
-                        let mut action_text = "[ Press Enter or 'o' to open deal website in browser ]".to_string();
-                        if app.parser.has_discount_code(html) {
-                            action_text = "[ Press Enter or 'o' to copy code to clipboard & open website ]".to_string();
-                        }
-                        
-                        text.push(Line::from(vec![Span::styled(action_text, Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD))]));
-                    }
-
-                    let details_para = Paragraph::new(text)
-                        .block(Block::default()
-                            .borders(Borders::ALL)
-                            .title(" Discount Details ")
-                            .border_style(Style::default().fg(Color::LightBlue)))
-                        .wrap(Wrap { trim: true });
-                    f.render_widget(details_para, display_chunks[1]);
+                    f.render_widget(
+                        DiscountDetailsWidget {
+                            details,
+                            category_name,
+                            discount_code: app.selected_discount_code.as_ref(),
+                            parser: &app.parser,
+                        },
+                        display_chunks[1],
+                    );
                 }
             }
         }
@@ -163,7 +98,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             AppState::CookieInput => "Esc: Quit | Enter: Fetch".to_string(),
             AppState::CategoryList => "q/Esc: Quit | Enter: Browse Category | c: Change Cookies".to_string(),
             AppState::DiscountList => {
-                if app.search_mode {
+                if let crate::tui::app::SearchState::Typing(_) = app.search_state {
                     "Esc/Enter: Exit Search | Type to search".to_string()
                 } else {
                     "q/Esc/Backspace: Back to Categories | Enter: Details | s: Search | n: Sort Name | g: Group | p: Sort %".to_string()

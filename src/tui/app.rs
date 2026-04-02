@@ -12,6 +12,19 @@ pub enum AppState {
     DiscountDetails,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum SearchState {
+    None,
+    Typing(String),
+    Applied(String),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum CategoryFilter {
+    All,
+    Specific(String),
+}
+
 pub struct App {
     pub state: AppState,
     pub cookies: String,
@@ -26,8 +39,8 @@ pub struct App {
     pub parser: HtmlParser,
     pub clipboard: Option<arboard::Clipboard>,
     pub error_message: Option<String>,
-    pub search_mode: bool,
-    pub search_query: String,
+    pub search_state: SearchState,
+    pub category_filter: CategoryFilter,
 }
 
 impl App {
@@ -47,35 +60,43 @@ impl App {
             parser,
             clipboard: arboard::Clipboard::new().ok(),
             error_message: None,
-            search_mode: false,
-            search_query: String::new(),
+            search_state: SearchState::None,
+            category_filter: CategoryFilter::All,
         }
     }
 
-    pub fn get_current_discounts(&self) -> Vec<&(String, Discount, Option<DealType>)> {
-        if self.categories.is_empty() {
-            return Vec::new();
-        }
-        let active_cat_name = &self.categories[self.category_list_state.selected().unwrap_or(0)];
-        let search_lower = self.search_query.to_lowercase();
+    pub fn get_current_discounts(&self) -> Vec<usize> {
+        let (search_active, search_lower) = match &self.search_state {
+            SearchState::Typing(q) | SearchState::Applied(q) => (true, q.to_lowercase()),
+            SearchState::None => (false, String::new()),
+        };
         
-        let filtered_by_cat = if active_cat_name == "All Discounts" {
-            let mut seen = HashSet::new();
-            let mut result = Vec::new();
-            for d in &self.discounts {
-                if seen.insert(d.1.id) {
-                    result.push(d);
+        let filtered_by_cat = match &self.category_filter {
+            CategoryFilter::All => {
+                let mut seen = HashSet::new();
+                let mut result = Vec::new();
+                for (idx, d) in self.discounts.iter().enumerate() {
+                    if seen.insert(d.1.id) {
+                        result.push(idx);
+                    }
                 }
+                result
+            },
+            CategoryFilter::Specific(cat_name) => {
+                self.discounts
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, (c, _, _))| c == cat_name)
+                    .map(|(idx, _)| idx)
+                    .collect::<Vec<_>>()
             }
-            result
-        } else {
-            self.discounts.iter().filter(|(c, _, _)| c == active_cat_name).collect::<Vec<_>>()
         };
 
-        if self.search_query.is_empty() {
+        if !search_active || search_lower.is_empty() {
             filtered_by_cat
         } else {
-            filtered_by_cat.into_iter().filter(|(cat, d, _)| {
+            filtered_by_cat.into_iter().filter(|&idx| {
+                let (cat, d, _) = &self.discounts[idx];
                 cat.to_lowercase().contains(&search_lower) || d.name.to_lowercase().contains(&search_lower)
             }).collect()
         }
@@ -114,41 +135,46 @@ impl App {
     }
 
     pub async fn fetch_details(&mut self) -> Result<(), Box<dyn Error>> {
-        let current_discounts = self.get_current_discounts();
-        if let Some(index) = self.discount_list_state.selected() {
-            if index < current_discounts.len() {
-                let discount_id = current_discounts[index].1.id;
-                if let Some(cli) = &self.cli {
-                    match cli.fetch_discount_item(discount_id).await {
-                        Ok(details) => {
-                            let html = &details.function_data.result.description_long_html;
-                            self.selected_discount_code = None;
-                            
-                            if self.parser.has_discount_code(html) {
-                                if let Ok(code) = cli.fetch_discount_code(discount_id).await {
-                                    if !code.is_empty() {
-                                        self.selected_discount_code = Some(code.trim_matches('"').to_string());
-                                    }
-                                }
-                            }
-                            
-                            self.selected_discount_details = Some(details);
-                            self.state = AppState::DiscountDetails;
-                            Ok(())
-                        }
-                        Err(e) => {
-                            self.error_message = Some(format!("Error fetching details: {}", e));
-                            Err(e)
-                        }
-                    }
-                } else {
-                    Ok(())
-                }
-            } else {
-                Ok(())
-            }
-        } else {
-            Ok(())
+        let current_discounts_idx = self.get_current_discounts();
+        
+        let index = match self.discount_list_state.selected() {
+            Some(i) => i,
+            None => return Ok(()),
+        };
+
+        if index >= current_discounts_idx.len() {
+            return Ok(());
         }
+
+        let actual_idx = current_discounts_idx[index];
+        let discount_id = self.discounts[actual_idx].1.id;
+        
+        let cli = match &self.cli {
+            Some(c) => c,
+            None => return Ok(()),
+        };
+
+        let details = match cli.fetch_discount_item(discount_id).await {
+            Ok(d) => d,
+            Err(e) => {
+                self.error_message = Some(format!("Error fetching details: {}", e));
+                return Err(e);
+            }
+        };
+
+        let html = &details.function_data.result.description_long_html;
+        self.selected_discount_code = None;
+        
+        if self.parser.has_discount_code(html) {
+            if let Ok(code) = cli.fetch_discount_code(discount_id).await {
+                if !code.is_empty() {
+                    self.selected_discount_code = Some(code.trim_matches('"').to_string());
+                }
+            }
+        }
+        
+        self.selected_discount_details = Some(details);
+        self.state = AppState::DiscountDetails;
+        Ok(())
     }
 }

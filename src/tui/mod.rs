@@ -1,4 +1,5 @@
 pub mod app;
+pub mod components;
 pub mod ui;
 
 use std::error::Error;
@@ -12,7 +13,7 @@ use ratatui::{
     },
     Terminal,
 };
-use app::{App, AppState};
+use app::{App, AppState, CategoryFilter, SearchState};
 use ui::ui;
 use crate::beni_cli::{AppConfig, DealType};
 
@@ -97,6 +98,13 @@ async fn run_app<B: Backend<Error = io::Error>>(
                     }
                     KeyCode::Enter => {
                         app.state = AppState::DiscountList;
+                        let cat_name = app.categories[app.category_list_state.selected().unwrap_or(0)].clone();
+                        if cat_name == "All Discounts" {
+                            app.category_filter = CategoryFilter::All;
+                        } else {
+                            app.category_filter = CategoryFilter::Specific(cat_name);
+                        }
+                        
                         let len = app.get_current_discounts().len();
                         if len > 0 {
                             app.discount_list_state.select(Some(0));
@@ -110,31 +118,59 @@ async fn run_app<B: Backend<Error = io::Error>>(
                     _ => {}
                 },
                 AppState::DiscountList => {
-                    if app.search_mode {
+                    let mut exit_typing = false;
+                    let mut exit_search = false;
+                    let mut update_typing = false;
+                    let mut char_to_push = None;
+                    let mut pop_char = false;
+
+                    if let SearchState::Typing(_) = &app.search_state {
                         match key.code {
                             KeyCode::Esc => {
-                                app.search_mode = false;
-                                app.search_query.clear();
+                                exit_search = true;
                                 app.discount_list_state.select(Some(0));
                             }
                             KeyCode::Backspace => {
-                                app.search_query.pop();
+                                pop_char = true;
                                 app.discount_list_state.select(Some(0));
                             }
                             KeyCode::Char(c) => {
-                                app.search_query.push(c);
+                                char_to_push = Some(c);
                                 app.discount_list_state.select(Some(0));
                             }
                             KeyCode::Enter => {
-                                app.search_mode = false;
+                                exit_typing = true;
                             }
                             _ => {}
+                        }
+                        update_typing = true;
+                    }
+
+                    if update_typing {
+                        if exit_search {
+                            app.search_state = SearchState::None;
+                        } else if let SearchState::Typing(mut q) = app.search_state.clone() {
+                            if pop_char {
+                                q.pop();
+                            }
+                            if let Some(c) = char_to_push {
+                                q.push(c);
+                            }
+                            if exit_typing {
+                                if q.is_empty() {
+                                    app.search_state = SearchState::None;
+                                } else {
+                                    app.search_state = SearchState::Applied(q);
+                                }
+                            } else {
+                                app.search_state = SearchState::Typing(q);
+                            }
                         }
                     } else {
                         match key.code {
                             KeyCode::Char('q') | KeyCode::Esc | KeyCode::Backspace => {
                                 app.state = AppState::CategoryList;
-                                app.search_query.clear();
+                                app.search_state = SearchState::None;
                             }
                             KeyCode::Down => {
                                 let current_len = app.get_current_discounts().len();
@@ -179,8 +215,11 @@ async fn run_app<B: Backend<Error = io::Error>>(
                             }
                             KeyCode::Char('s') => {
                                 // Enter search mode
-                                app.search_mode = true;
-                                app.search_query.clear();
+                                let current_q = match &app.search_state {
+                                    SearchState::Applied(q) => q.clone(),
+                                    _ => String::new(),
+                                };
+                                app.search_state = SearchState::Typing(current_q);
                             }
                             KeyCode::Char('g') => {
                                 // Sort globally by category
