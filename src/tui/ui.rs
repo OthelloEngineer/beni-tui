@@ -107,7 +107,7 @@ fn render_footer(f: &mut Frame, app: &App, area: Rect) {
                 if let SearchState::Typing(_) = app.search_state {
                     "Esc/Enter: Exit Search | Type to search".to_string()
                 } else {
-                    "q/Esc/Backspace: Back to Categories | Enter: Details | s: Search | n: Sort Name | g: Group | p: Sort %".to_string()
+                    "q/Esc/Backspace: Back to Categories | Enter: Details | s: Search | n: Sort Name | g: Group | p: Sort % | d: Sort Date".to_string()
                 }
             }
             AppState::DiscountDetails => {
