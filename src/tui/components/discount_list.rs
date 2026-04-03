@@ -39,7 +39,10 @@ impl<'a> StatefulWidget for DiscountListWidget<'a> {
                         Style::default().fg(Color::LightGreen).add_modifier(Modifier::BOLD),
                     ));
                 }
-
+                spans.push(Span::styled(
+                    format!(" ({} - {})", d.start_date, d.end_date.as_deref().unwrap_or("N/A")),
+                    Style::default().fg(Color::DarkGray),
+                ));
                 ListItem::new(Line::from(spans))
             })
             .collect();

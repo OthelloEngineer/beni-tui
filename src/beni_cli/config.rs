@@ -1,5 +1,6 @@
 use serde_derive::Deserialize;
 use std::fs;
+use tracing::{error, info};
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct AppConfig {
@@ -22,8 +23,16 @@ pub struct BenifexConfig {
 
 impl AppConfig {
     pub fn load(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let file = fs::File::open(path)?;
-        let config: AppConfig = serde_yaml::from_reader(file)?;
+        info!("Loading configuration from {}", path);
+        let file = fs::File::open(path).map_err(|e| {
+            error!("Failed to open config file {}: {}", path, e);
+            e
+        })?;
+        let config: AppConfig = serde_yaml::from_reader(file).map_err(|e| {
+            error!("Failed to parse config file {}: {}", path, e);
+            e
+        })?;
+        info!("Configuration loaded successfully");
         Ok(config)
     }
 }

@@ -1,5 +1,6 @@
 use regex::Regex;
 use crate::beni_cli::config::AppConfig;
+use tracing::debug;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum DealType {
@@ -27,15 +28,19 @@ impl HtmlParser {
     }
 
     pub fn extract_link(&self, html: &str) -> Option<String> {
-        self.re_link.captures(html).map(|caps| {
+        let link = self.re_link.captures(html).map(|caps| {
             let mut url = caps.get(1).unwrap().as_str().to_string();
             url = url.replace("&amp;", "&");
             url
-        })
+        });
+        debug!("Extracted link: {:?}", link);
+        link
     }
 
     pub fn has_discount_code(&self, html: &str) -> bool {
-        self.re_code.is_match(html)
+        let has_code = self.re_code.is_match(html);
+        debug!("Has discount code: {}", has_code);
+        has_code
     }
 
     pub fn extract_paragraphs(&self, html: &str) -> Vec<String> {
@@ -48,6 +53,7 @@ impl HtmlParser {
                 paragraphs.push(p_text);
             }
         }
+        debug!("Extracted {} paragraphs", paragraphs.len());
         paragraphs
     }
     
@@ -55,13 +61,16 @@ impl HtmlParser {
         let percentage_regex = Regex::new(r"(\d+)\s*%").unwrap();
         if let Some(caps) = percentage_regex.captures(highlight) {
             let discount_str = caps.get(1)?.as_str();
-            let discount = discount_str.parse::<i8>().ok()?;
-            return Some(DealType::Percentage(discount));
+            if let Ok(discount) = discount_str.parse::<i8>() {
+                debug!("Parsed percentage discount: {}%", discount);
+                return Some(DealType::Percentage(discount));
+            }
         }
         
         let trial_regex = Regex::new(&self.config.benifex.trial_regex).unwrap();
         if let Some(caps) = trial_regex.captures(highlight) {
             let trial_str = caps.get(1)?.as_str();
+            debug!("Parsed trial discount: {}", trial_str);
             return Some(DealType::Trial(trial_str.to_string()));
         }
         None
