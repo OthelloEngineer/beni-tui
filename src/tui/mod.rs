@@ -13,9 +13,9 @@ use ratatui::{
     },
     Terminal,
 };
-use app::{App, AppState, CategoryFilter, SearchState};
+use app::{App, AppState, CategoryFilter, SearchState, SortColumn};
 use ui::ui;
-use crate::beni_cli::{AppConfig, DealType};
+use crate::beni_cli::AppConfig;
 
 pub async fn run_tui(config: AppConfig) -> Result<(), Box<dyn Error>> {
     enable_raw_mode()?;
@@ -75,7 +75,7 @@ async fn handle_cookie_input(app: &mut App, code: KeyCode) -> io::Result<()> {
 
 fn handle_category_list(app: &mut App, code: KeyCode) {
     match code {
-        KeyCode::Char('q') | KeyCode::Esc => app.state = AppState::CookieInput, // Quit app
+        KeyCode::Char('q') | KeyCode::Esc => app.state = AppState::CookieInput,
         KeyCode::Down => app.category_list.next(),
         KeyCode::Up => app.category_list.previous(),
         KeyCode::Enter => {
@@ -111,23 +111,38 @@ async fn handle_discount_list(app: &mut App, code: KeyCode) -> io::Result<()> {
             app.state = AppState::CategoryList;
             app.search_state = SearchState::None;
         }
-        KeyCode::Down => app.discount_list.next(),
-        KeyCode::Up => app.discount_list.previous(),
+        KeyCode::Down | KeyCode::Char('j') => app.discount_list.next(),
+        KeyCode::Up | KeyCode::Char('k') => app.discount_list.previous(),
         KeyCode::Enter => { let _ = app.fetch_details().await; },
-        KeyCode::Char('n') => app.discounts.sort_by(|a, b| a.1.name.cmp(&b.1.name)),
+        KeyCode::Char('n') => {
+            app.sort_column = SortColumn::Name;
+            app.sort_discounts();
+        }
         KeyCode::Char('s') => {
             let q = if let SearchState::Applied(q) = &app.search_state { q.clone() } else { String::new() };
             app.search_state = SearchState::Typing(q);
         },
-        KeyCode::Char('g') => app.discounts.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.name.cmp(&b.1.name))),
-        KeyCode::Char('p') => app.discounts.sort_by(|a, b| {
-            let val_a = match &a.2 { Some(DealType::Percentage(p)) => *p, _ => -1 };
-            let val_b = match &b.2 { Some(DealType::Percentage(p)) => *p, _ => -1 };
-            val_b.cmp(&val_a).then(a.1.name.cmp(&b.1.name))
-        }),
-        KeyCode::Char('d') => app.discounts.sort_by(|a, b | {
-            b.1.start_date.cmp(&a.1.start_date).then(a.1.name.cmp(&b.1.name))
-        }),
+        KeyCode::Char('g') => {
+            app.sort_column = SortColumn::Category;
+            app.sort_discounts();
+        }
+        KeyCode::Char('p') => {
+            app.sort_column = SortColumn::Deal;
+            app.sort_descending = !app.sort_descending;
+            app.sort_discounts();
+        }
+        KeyCode::Char('h') => {
+            app.sort_column = app.sort_column.previous();
+            app.sort_discounts();
+        }
+        KeyCode::Char('l') => {
+            app.sort_column = app.sort_column.next();
+            app.sort_discounts();
+        }
+        KeyCode::Char(' ') => {
+            app.sort_descending = !app.sort_descending;
+            app.sort_discounts();
+        }
         _ => {}
     }
     app.sync_filtered_discounts();

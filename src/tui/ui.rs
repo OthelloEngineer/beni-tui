@@ -67,12 +67,14 @@ fn render_main_view(f: &mut Frame, app: &mut App, area: Rect) {
     };
 
     f.render_stateful_widget(
-        DiscountListWidget {
-            app_discounts: &app.discounts,
-            discount_indices: &app.discount_list.filtered_indices,
-            category_filter: &app.category_filter,
-            search_state: &app.search_state,
-        },
+        DiscountListWidget::new(
+            &app.discounts,
+            &app.discount_list.filtered_indices,
+            &app.category_filter,
+            &app.search_state,
+            app.sort_column,
+            app.sort_descending,
+        ),
         display_chunks[0],
         &mut app.discount_list.state,
     );
@@ -101,13 +103,13 @@ fn render_footer(f: &mut Frame, app: &App, area: Rect) {
         format!("ERROR: {}", err)
     } else {
         match app.state {
-            AppState::CookieInput => "Esc: Quit | Enter: Fetch ".to_string(),
+            AppState::CookieInput => "Esc: Quit | Enter: Fetch".to_string(),
             AppState::CategoryList => "q/Esc: Quit | Enter: Browse Category | c: Change Cookies".to_string(),
             AppState::DiscountList => {
                 if let SearchState::Typing(_) = app.search_state {
                     "Esc/Enter: Exit Search | Type to search".to_string()
                 } else {
-                    "q/Esc/Backspace: Back to Categories | Enter: Details | s: Search | n: Sort Name | g: Group | p: Sort % | d: Sort Date".to_string()
+                    "q/Esc/Backspace: Back to Categories | Enter: Details | s: Search | h/l: Sort Col | Space: Flip".to_string()
                 }
             }
             AppState::DiscountDetails => {

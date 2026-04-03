@@ -2,7 +2,7 @@ use std::error::Error;
 use std::collections::HashSet;
 use crate::beni_cli::{BeniCli, AppConfig, HtmlParser, DealType};
 use crate::benifex::discount_response::Discount;
-use ratatui::widgets::ListState;
+use ratatui::widgets::{ListState, TableState};
 use tracing::{error, info};
 
 #[derive(PartialEq, Clone, Copy)]
@@ -70,14 +70,14 @@ impl CategoryList {
 }
 
 pub struct DiscountList {
-    pub state: ListState,
+    pub state: TableState,
     pub filtered_indices: Vec<usize>,
 }
 
 impl DiscountList {
     pub fn new() -> Self {
         Self {
-            state: ListState::default(),
+            state: TableState::default(),
             filtered_indices: Vec::new(),
         }
     }
@@ -90,7 +90,7 @@ impl DiscountList {
             self.state.select(Some(0));
         } else if let Some(i) = self.state.selected() {
             if i >= self.filtered_indices.len() {
-                self.state.select(Some(self.filtered_indices.len() - 1));
+                self.state.select(Some(self.filtered_indices.len().saturating_sub(1)));
             }
         }
     }
@@ -114,6 +114,37 @@ impl DiscountList {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SortColumn {
+    Category,
+    Name,
+    Deal,
+    StartDate,
+    EndDate,
+}
+
+impl SortColumn {
+    pub fn next(self) -> Self {
+        match self {
+            SortColumn::Category => SortColumn::Name,
+            SortColumn::Name => SortColumn::Deal,
+            SortColumn::Deal => SortColumn::StartDate,
+            SortColumn::StartDate => SortColumn::EndDate,
+            SortColumn::EndDate => SortColumn::Category,
+        }
+    }
+
+    pub fn previous(self) -> Self {
+        match self {
+            SortColumn::Category => SortColumn::EndDate,
+            SortColumn::Name => SortColumn::Category,
+            SortColumn::Deal => SortColumn::Name,
+            SortColumn::StartDate => SortColumn::Deal,
+            SortColumn::EndDate => SortColumn::StartDate,
+        }
+    }
+}
+
 pub struct App {
     pub state: AppState,
     pub cookies: String,
@@ -129,6 +160,8 @@ pub struct App {
     pub error_message: Option<String>,
     pub search_state: SearchState,
     pub category_filter: CategoryFilter,
+    pub sort_column: SortColumn,
+    pub sort_descending: bool,
 }
 
 impl App {
@@ -149,7 +182,30 @@ impl App {
             error_message: None,
             search_state: SearchState::None,
             category_filter: CategoryFilter::All,
+            sort_column: SortColumn::Name,
+            sort_descending: false,
         }
+    }
+
+    pub fn sort_discounts(&mut self) {
+        let col = self.sort_column;
+        let desc = self.sort_descending;
+        
+        self.discounts.sort_by(|a, b| {
+            let cmp = match col {
+                SortColumn::Category => a.0.cmp(&b.0),
+                SortColumn::Name => a.1.name.cmp(&b.1.name),
+                SortColumn::Deal => {
+                    let val_a = match &a.2 { Some(DealType::Percentage(p)) => *p, _ => -1 };
+                    let val_b = match &b.2 { Some(DealType::Percentage(p)) => *p, _ => -1 };
+                    val_a.cmp(&val_b)
+                }
+                SortColumn::StartDate => a.1.start_date.cmp(&b.1.start_date),
+                SortColumn::EndDate => a.1.end_date.cmp(&b.1.end_date),
+            };
+            
+            if desc { cmp.reverse() } else { cmp }
+        });
     }
 
     pub fn sync_filtered_discounts(&mut self) {
